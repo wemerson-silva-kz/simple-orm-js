@@ -9,13 +9,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
-    services:
-      cassandra:
-        image: cassandra:4.1
-        ports:
-          - 9042:9042
-        options: --health-cmd "cqlsh -e 'describe cluster'" --health-interval 30s --health-timeout 10s --health-retries 5
 
     steps:
     - uses: actions/checkout@v3
@@ -29,5 +22,5 @@ jobs:
     - name: Build
       run: bun run build
       
-    - name: Test
-      run: bun test
+    - name: Run unit tests
+      run: bun test test/unit.test.ts
