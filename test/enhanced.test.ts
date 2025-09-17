@@ -232,9 +232,9 @@ describe('Cassandra ORM Core Enhanced', () => {
       });
 
       expect(errors.length).toBe(3);
-      expect(errors.some(e => e.field === 'name')).toBe(true);
-      expect(errors.some(e => e.field === 'email')).toBe(true);
-      expect(errors.some(e => e.field === 'age')).toBe(true);
+      expect(errors.some(e => e.includes('name'))).toBe(true);
+      expect(errors.some(e => e.includes('email'))).toBe(true);
+      expect(errors.some(e => e.includes('age'))).toBe(true);
     });
 
     it('should pass validation with valid data', () => {

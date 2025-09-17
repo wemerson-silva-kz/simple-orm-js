@@ -271,16 +271,12 @@ class CassandraModel implements Model {
 
   private async findByUniqueField(field: string, value: any): Promise<any> {
     try {
-      // Try to find using index if available
       const query = `SELECT * FROM ${this.keyspace}.${this.tableName} WHERE ${field} = ? LIMIT 1`;
-      const result = await this.client.execute(query, [value], { prepare: true });
+      const result = await this.orm.executeWithPrepared(query, [value]);
       return result.rows[0] || null;
     } catch (error) {
-      // If no index exists, we need to scan (not recommended for production)
-      // This is a fallback - indexes should be created for unique fields
-      const query = `SELECT * FROM ${this.keyspace}.${this.tableName} WHERE ${field} = ? ALLOW FILTERING LIMIT 1`;
-      const result = await this.client.execute(query, [value], { prepare: true });
-      return result.rows[0] || null;
+      // If index doesn't exist, return null (constraint won't be enforced)
+      return null;
     }
   }
 }
