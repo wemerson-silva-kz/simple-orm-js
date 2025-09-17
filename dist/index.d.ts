@@ -2,6 +2,7 @@ export { CassandraORM } from './client';
 export { TypeConverter } from './converter';
 export { Validator } from './validator';
 export * from './types';
+export * from './errors';
 import { CassandraORM } from './client';
 import { Config } from './types';
 export declare function createClient(config: Config): CassandraORM;

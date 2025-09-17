@@ -4,6 +4,7 @@ exports.CassandraORM = void 0;
 const cassandra_driver_1 = require("cassandra-driver");
 const converter_1 = require("./converter");
 const validator_1 = require("./validator");
+const errors_1 = require("./errors");
 class CassandraORM {
     constructor(config) {
         this.config = config;
@@ -15,19 +16,25 @@ class CassandraORM {
     async connect() {
         if (this.connected)
             return;
-        // Connect without keyspace first
-        const tempClient = new cassandra_driver_1.Client({
-            ...this.config.clientOptions,
-            keyspace: undefined
-        });
-        await tempClient.connect();
-        if (this.config.ormOptions?.createKeyspace) {
-            await this.createKeyspaceWithClient(tempClient);
+        try {
+            const tempClient = new cassandra_driver_1.Client({
+                ...this.config.clientOptions,
+                keyspace: undefined
+            });
+            await tempClient.connect();
+            if (this.config.ormOptions?.createKeyspace) {
+                await this.createKeyspaceWithClient(tempClient);
+            }
+            await tempClient.shutdown();
+            await this.client.connect();
+            this.connected = true;
         }
-        await tempClient.shutdown();
-        // Now connect with keyspace
-        await this.client.connect();
-        this.connected = true;
+        catch (error) {
+            throw new errors_1.ConnectionError(`Failed to connect: ${error.message}`);
+        }
+    }
+    async executeWithPrepared(query, values) {
+        return await this.client.execute(query, values, { prepare: true });
     }
     async loadSchema(tableName, schema) {
         if (!this.connected)
@@ -35,7 +42,7 @@ class CassandraORM {
         let model = this.models.get(tableName);
         if (!model) {
             await this.createTable(tableName, schema);
-            model = new CassandraModel(this.client, this.keyspace, tableName, schema);
+            model = new CassandraModel(this.client, this.keyspace, tableName, schema, this);
             this.models.set(tableName, model);
         }
         return model;
@@ -51,11 +58,6 @@ class CassandraORM {
                    WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}`;
         await client.execute(query);
     }
-    async createKeyspace() {
-        const query = `CREATE KEYSPACE IF NOT EXISTS ${this.keyspace} 
-                   WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}`;
-        await this.client.execute(query);
-    }
     async createTable(tableName, schema) {
         const columns = Object.entries(schema.fields)
             .map(([name, fieldDef]) => {
@@ -67,7 +69,6 @@ class CassandraORM {
         const query = `CREATE TABLE IF NOT EXISTS ${this.keyspace}.${tableName} 
                    (${columns}, PRIMARY KEY (${primaryKey}))`;
         await this.client.execute(query);
-        // Create regular indexes
         if (schema.indexes) {
             for (const field of schema.indexes) {
                 const indexQuery = `CREATE INDEX IF NOT EXISTS idx_${tableName}_${field} 
@@ -75,10 +76,8 @@ class CassandraORM {
                 await this.client.execute(indexQuery);
             }
         }
-        // Create indexes for unique fields (required for unique constraint checking)
         const uniqueFields = this.getUniqueFieldsFromSchema(schema);
         for (const field of uniqueFields) {
-            // Only create index if not already in regular indexes
             if (!schema.indexes?.includes(field)) {
                 const indexQuery = `CREATE INDEX IF NOT EXISTS idx_${tableName}_${field}_unique 
                            ON ${this.keyspace}.${tableName} (${field})`;
@@ -88,17 +87,15 @@ class CassandraORM {
     }
     getUniqueFieldsFromSchema(schema) {
         const uniqueFields = [];
-        // From schema.unique array
         if (schema.unique) {
             uniqueFields.push(...schema.unique);
         }
-        // From field definitions with unique: true
         for (const [fieldName, fieldDef] of Object.entries(schema.fields)) {
             if (typeof fieldDef === 'object' && fieldDef.unique) {
                 uniqueFields.push(fieldName);
             }
         }
-        return [...new Set(uniqueFields)]; // Remove duplicates
+        return [...new Set(uniqueFields)];
     }
     getFieldType(fieldDef) {
         return typeof fieldDef === 'string' ? fieldDef : fieldDef.type;
@@ -106,22 +103,21 @@ class CassandraORM {
 }
 exports.CassandraORM = CassandraORM;
 class CassandraModel {
-    constructor(client, keyspace, tableName, schema) {
+    constructor(client, keyspace, tableName, schema, orm) {
         this.client = client;
         this.keyspace = keyspace;
         this.tableName = tableName;
         this.schema = schema;
+        this.orm = orm;
     }
     validate(data, isUpdate = false) {
         return validator_1.Validator.validate(data, this.schema.fields, isUpdate);
     }
     async create(data) {
-        // Validate data
         const errors = this.validate(data, false);
         if (errors.length > 0) {
-            throw new Error(`Validation failed: ${errors.map(e => e.message).join(', ')}`);
+            throw new errors_1.ValidationError(`Validation failed: ${errors.join(', ')}`);
         }
-        // Check unique constraints
         await this.checkUniqueConstraints(data);
         const converted = converter_1.TypeConverter.convertObject(data, this.schema.fields);
         const fields = Object.keys(converted);
@@ -129,7 +125,7 @@ class CassandraModel {
         const placeholders = fields.map(() => '?').join(', ');
         const query = `INSERT INTO ${this.keyspace}.${this.tableName} 
                    (${fields.join(', ')}) VALUES (${placeholders})`;
-        await this.client.execute(query, values, { prepare: true });
+        await this.orm.executeWithPrepared(query, values);
         return converted;
     }
     async find(where) {
@@ -140,7 +136,7 @@ class CassandraModel {
             query += ` WHERE ${conditions}`;
             values = Object.values(where);
         }
-        const result = await this.client.execute(query, values, { prepare: true });
+        const result = await this.orm.executeWithPrepared(query, values);
         return result.rows;
     }
     async findOne(where) {
@@ -148,18 +144,15 @@ class CassandraModel {
         return results[0] || null;
     }
     async update(data, where) {
-        // Validate data (only fields being updated)
         const errors = this.validate(data, true);
         if (errors.length > 0) {
-            throw new Error(`Validation failed: ${errors.map(e => e.message).join(', ')}`);
+            throw new errors_1.ValidationError(`Validation failed: ${errors.join(', ')}`);
         }
-        // Check unique constraints (excluding current record)
         const currentRecord = await this.findOne(where);
         if (currentRecord) {
             await this.checkUniqueConstraints(data, currentRecord.id);
         }
         const converted = converter_1.TypeConverter.convertObject(data, this.schema.fields);
-        // Remove primary key fields from update data
         const updateData = {};
         for (const [key, value] of Object.entries(converted)) {
             if (!this.schema.key.includes(key)) {
@@ -202,28 +195,23 @@ class CassandraModel {
     }
     getUniqueFields() {
         const uniqueFields = [];
-        // From schema.unique array
         if (this.schema.unique) {
             uniqueFields.push(...this.schema.unique);
         }
-        // From field definitions with unique: true
         for (const [fieldName, fieldDef] of Object.entries(this.schema.fields)) {
             if (typeof fieldDef === 'object' && fieldDef.unique) {
                 uniqueFields.push(fieldName);
             }
         }
-        return [...new Set(uniqueFields)]; // Remove duplicates
+        return [...new Set(uniqueFields)];
     }
     async findByUniqueField(field, value) {
         try {
-            // Try to find using index if available
             const query = `SELECT * FROM ${this.keyspace}.${this.tableName} WHERE ${field} = ? LIMIT 1`;
             const result = await this.client.execute(query, [value], { prepare: true });
             return result.rows[0] || null;
         }
         catch (error) {
-            // If no index exists, we need to scan (not recommended for production)
-            // This is a fallback - indexes should be created for unique fields
             const query = `SELECT * FROM ${this.keyspace}.${this.tableName} WHERE ${field} = ? ALLOW FILTERING LIMIT 1`;
             const result = await this.client.execute(query, [value], { prepare: true });
             return result.rows[0] || null;

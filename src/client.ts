@@ -1,7 +1,8 @@
 import { Client } from 'cassandra-driver';
-import { Config, ModelSchema, Model, ValidationError, FieldDefinition, CassandraType } from './types';
+import { Config, ModelSchema, Model, FieldDefinition, CassandraType } from './types';
 import { TypeConverter } from './converter';
 import { Validator } from './validator';
+import { ValidationError, ConnectionError } from './errors';
 
 export class CassandraORM {
   private client: Client;
@@ -17,23 +18,31 @@ export class CassandraORM {
   async connect(): Promise<void> {
     if (this.connected) return;
     
-    // Connect without keyspace first
-    const tempClient = new Client({
-      ...this.config.clientOptions,
-      keyspace: undefined
-    });
-    
-    await tempClient.connect();
-    
-    if (this.config.ormOptions?.createKeyspace) {
-      await this.createKeyspaceWithClient(tempClient);
+    try {
+      // Connect without keyspace first
+      const tempClient = new Client({
+        ...this.config.clientOptions,
+        keyspace: undefined as any
+      });
+      
+      await tempClient.connect();
+      
+      if (this.config.ormOptions?.createKeyspace) {
+        await this.createKeyspaceWithClient(tempClient);
+      }
+      
+      await tempClient.shutdown();
+      
+      // Now connect with keyspace
+      await this.client.connect();
+      this.connected = true;
+    } catch (error: any) {
+      throw new ConnectionError(`Failed to connect: ${error.message}`);
     }
-    
-    await tempClient.shutdown();
-    
-    // Now connect with keyspace
-    await this.client.connect();
-    this.connected = true;
+  }
+
+  async executeWithPrepared(query: string, values?: any[]): Promise<any> {
+    return await this.client.execute(query, values, { prepare: true });
   }
 
   async loadSchema<T extends ModelSchema>(tableName: string, schema: T): Promise<Model<any>> {
@@ -42,7 +51,7 @@ export class CassandraORM {
     let model = this.models.get(tableName);
     if (!model) {
       await this.createTable(tableName, schema);
-      model = new CassandraModel(this.client, this.keyspace, tableName, schema);
+      model = new CassandraModel(this.client, this.keyspace, tableName, schema, this);
       this.models.set(tableName, model);
     }
     
@@ -60,12 +69,6 @@ export class CassandraORM {
     const query = `CREATE KEYSPACE IF NOT EXISTS ${this.keyspace} 
                    WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}`;
     await client.execute(query);
-  }
-
-  private async createKeyspace(): Promise<void> {
-    const query = `CREATE KEYSPACE IF NOT EXISTS ${this.keyspace} 
-                   WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}`;
-    await this.client.execute(query);
   }
 
   private async createTable(tableName: string, schema: ModelSchema): Promise<void> {
@@ -132,10 +135,11 @@ class CassandraModel implements Model {
     private client: Client,
     private keyspace: string,
     private tableName: string,
-    private schema: ModelSchema
+    private schema: ModelSchema,
+    private orm: CassandraORM
   ) {}
 
-  validate(data: any, isUpdate: boolean = false): ValidationError[] {
+  validate(data: any, isUpdate: boolean = false): string[] {
     return Validator.validate(data, this.schema.fields, isUpdate);
   }
 
@@ -143,7 +147,7 @@ class CassandraModel implements Model {
     // Validate data
     const errors = this.validate(data, false);
     if (errors.length > 0) {
-      throw new Error(`Validation failed: ${errors.map(e => e.message).join(', ')}`);
+      throw new ValidationError(`Validation failed: ${errors.join(', ')}`);
     }
 
     // Check unique constraints
@@ -157,7 +161,7 @@ class CassandraModel implements Model {
     const query = `INSERT INTO ${this.keyspace}.${this.tableName} 
                    (${fields.join(', ')}) VALUES (${placeholders})`;
     
-    await this.client.execute(query, values, { prepare: true });
+    await this.orm.executeWithPrepared(query, values);
     return converted;
   }
 
@@ -171,7 +175,7 @@ class CassandraModel implements Model {
       values = Object.values(where);
     }
     
-    const result = await this.client.execute(query, values, { prepare: true });
+    const result = await this.orm.executeWithPrepared(query, values);
     return result.rows;
   }
 
@@ -184,7 +188,7 @@ class CassandraModel implements Model {
     // Validate data (only fields being updated)
     const errors = this.validate(data, true);
     if (errors.length > 0) {
-      throw new Error(`Validation failed: ${errors.map(e => e.message).join(', ')}`);
+      throw new ValidationError(`Validation failed: ${errors.join(', ')}`);
     }
 
     // Check unique constraints (excluding current record)

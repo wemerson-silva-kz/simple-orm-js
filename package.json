@@ -7,19 +7,23 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc",
+    "dev": "tsc --watch",
     "test": "bun test",
-    "prepublishOnly": "npm run build"
+    "test:watch": "bun test --watch",
+    "lint": "eslint src/**/*.ts",
+    "format": "prettier --write src/**/*.ts",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
-    "cassandra", 
-    "scylladb", 
-    "orm", 
-    "database", 
-    "nosql", 
-    "typescript", 
-    "validation", 
+    "cassandra",
+    "scylladb",
+    "orm",
+    "database",
+    "nosql",
+    "typescript",
+    "validation",
     "unique-constraints",
-    "fast", 
+    "fast",
     "lightweight",
     "simple"
   ],
@@ -38,9 +42,13 @@
     "nanoid": "^5.1.5"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.44.0",
+    "@typescript-eslint/parser": "^8.44.0",
     "bun-types": "latest",
-    "@types/node": "^20.0.0"
+    "eslint": "^9.35.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.0.0"
   },
   "engines": {
     "node": ">=16.0.0"

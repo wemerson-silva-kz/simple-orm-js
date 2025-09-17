@@ -2,6 +2,7 @@ export { CassandraORM } from './client';
 export { TypeConverter } from './converter';
 export { Validator } from './validator';
 export * from './types';
+export * from './errors';
 
 // Convenience function
 import { CassandraORM } from './client';

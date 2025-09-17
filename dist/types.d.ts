@@ -47,11 +47,6 @@ export interface Config {
 export interface QueryResult {
     rows: any[];
 }
-export interface ValidationError {
-    field: string;
-    message: string;
-    value: any;
-}
 export interface Model<T = any> {
     create(data: Partial<T>): Promise<T>;
     find(where?: Partial<T>): Promise<T[]>;
@@ -59,7 +54,7 @@ export interface Model<T = any> {
     update(data: Partial<T>, where: Partial<T>): Promise<void>;
     delete(where: Partial<T>): Promise<void>;
     count(where?: Partial<T>): Promise<number>;
-    validate(data: any): ValidationError[];
+    validate(data: any): any[];
 }
 export type InferModelType<T extends ModelSchema> = {
     [K in keyof T['fields']]: T['fields'][K] extends CassandraType ? TypeFromCassandraType<T['fields'][K]> : T['fields'][K] extends FieldDefinition ? TypeFromCassandraType<T['fields'][K]['type']> : any;

@@ -20,7 +20,6 @@ class TypeConverter {
                 result[key] = value;
             }
         }
-        // Auto-generate IDs for missing fields
         for (const [fieldName, fieldDef] of Object.entries(fields)) {
             if (!result[fieldName]) {
                 const type = this.getFieldType(fieldDef);
@@ -28,7 +27,6 @@ class TypeConverter {
                     result[fieldName] = this.convert(undefined, type);
                 }
             }
-            // Apply default values
             if (typeof fieldDef === 'object' && fieldDef.default !== undefined && result[fieldName] === undefined) {
                 result[fieldName] = typeof fieldDef.default === 'function' ? fieldDef.default() : fieldDef.default;
             }
@@ -43,36 +41,28 @@ class TypeConverter {
     }
     static getCassandraType(type) {
         const typeMap = {
-            // UUID types
             'uuid': 'uuid',
             'timeuuid': 'timeuuid',
             'nanoid': 'text',
-            // String types
             'text': 'text',
             'ascii': 'ascii',
             'varchar': 'varchar',
-            // Integer types
             'int': 'int',
             'bigint': 'bigint',
             'smallint': 'smallint',
             'tinyint': 'tinyint',
             'varint': 'varint',
             'counter': 'counter',
-            // Float types
             'float': 'float',
             'double': 'double',
             'decimal': 'decimal',
-            // Boolean
             'boolean': 'boolean',
-            // Date/Time types
             'timestamp': 'timestamp',
             'date': 'date',
             'time': 'time',
             'duration': 'duration',
-            // Binary
             'blob': 'blob',
             'inet': 'inet',
-            // Collections
             'set<text>': 'set<text>',
             'set<int>': 'set<int>',
             'set<uuid>': 'set<uuid>',
@@ -85,11 +75,9 @@ class TypeConverter {
             'map<text,int>': 'map<text,int>',
             'map<int,text>': 'map<int,text>',
             'map<uuid,text>': 'map<uuid,text>',
-            // Tuples
             'tuple<text,int>': 'tuple<text,int>',
             'tuple<uuid,text>': 'tuple<uuid,text>',
             'tuple<text,text,int>': 'tuple<text,text,int>',
-            // Custom
             'json': 'text'
         };
         return typeMap[type] || 'text';
@@ -97,40 +85,31 @@ class TypeConverter {
 }
 exports.TypeConverter = TypeConverter;
 TypeConverter.converters = new Map([
-    // UUID types
     ['uuid', (v) => v || cassandra_driver_1.types.Uuid.random()],
     ['timeuuid', (v) => v || cassandra_driver_1.types.TimeUuid.now()],
     ['nanoid', (v) => v || (0, nanoid_1.nanoid)()],
-    // String types
     ['text', (v) => String(v)],
     ['ascii', (v) => String(v)],
     ['varchar', (v) => String(v)],
-    // Integer types
     ['int', (v) => parseInt(v, 10)],
     ['bigint', (v) => cassandra_driver_1.types.Long.fromValue(v)],
     ['smallint', (v) => parseInt(v, 10)],
     ['tinyint', (v) => parseInt(v, 10)],
     ['varint', (v) => cassandra_driver_1.types.Integer.fromString(String(v))],
     ['counter', (v) => cassandra_driver_1.types.Long.fromValue(v)],
-    // Float types
     ['float', (v) => parseFloat(v)],
     ['double', (v) => parseFloat(v)],
     ['decimal', (v) => typeof v === 'number' ? v.toString() : String(v)],
-    // Boolean
     ['boolean', (v) => Boolean(v)],
-    // Date/Time types
     ['timestamp', (v) => v instanceof Date ? v : new Date(v)],
     ['date', (v) => v instanceof Date ? v : new Date(v)],
     ['time', (v) => v instanceof Date ? v : new Date(v)],
     ['duration', (v) => String(v)],
-    // Binary
     ['blob', (v) => Buffer.from(v)],
     ['inet', (v) => cassandra_driver_1.types.InetAddress.fromString(String(v))],
-    // Collections - Text
     ['set<text>', (v) => Array.isArray(v) ? v : v instanceof Set ? Array.from(v) : [v]],
     ['list<text>', (v) => Array.isArray(v) ? v : [v]],
     ['map<text,text>', (v) => v || {}],
-    // Collections - Int
     ['set<int>', (v) => Array.isArray(v) ? v.map(x => parseInt(x, 10)) : [parseInt(v, 10)]],
     ['list<int>', (v) => Array.isArray(v) ? v.map(x => parseInt(x, 10)) : [parseInt(v, 10)]],
     ['map<text,int>', (v) => {
@@ -151,18 +130,14 @@ TypeConverter.converters = new Map([
             }
             return result;
         }],
-    // Collections - UUID
     ['set<uuid>', (v) => Array.isArray(v) ? v : [v]],
     ['list<uuid>', (v) => Array.isArray(v) ? v : [v]],
     ['map<uuid,text>', (v) => v || {}],
-    // Collections - Timestamp
     ['set<timestamp>', (v) => Array.isArray(v) ? v.map(x => x instanceof Date ? x : new Date(x)) : [v instanceof Date ? v : new Date(v)]],
     ['list<timestamp>', (v) => Array.isArray(v) ? v.map(x => x instanceof Date ? x : new Date(x)) : [v instanceof Date ? v : new Date(v)]],
-    // Tuples
     ['tuple<text,int>', (v) => Array.isArray(v) ? cassandra_driver_1.types.Tuple.fromArray([String(v[0]), parseInt(v[1], 10)]) : v],
     ['tuple<uuid,text>', (v) => Array.isArray(v) ? cassandra_driver_1.types.Tuple.fromArray([v[0], String(v[1])]) : v],
     ['tuple<text,text,int>', (v) => Array.isArray(v) ? cassandra_driver_1.types.Tuple.fromArray([String(v[0]), String(v[1]), parseInt(v[2], 10)]) : v],
-    // Custom types
     ['json', (v) => typeof v === 'string' ? v : JSON.stringify(v)]
 ]);
 //# sourceMappingURL=converter.js.map

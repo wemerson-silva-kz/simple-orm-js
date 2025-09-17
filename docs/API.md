@@ -1,375 +1,437 @@
-# API Reference
+# 📚 Simple ORM JS - Complete API Reference
 
-Complete API reference for Simple ORM JS.
+## 🏗️ Client Creation
 
-## Client
-
-### `createClient(config)`
+### `createClient(config: Config)`
 
 Creates a new ORM client instance.
 
-**Parameters:**
-- `config` (Object): Configuration object
-  - `clientOptions` (Object): Cassandra driver options
-    - `contactPoints` (Array): Array of contact points
-    - `localDataCenter` (String): Local data center name
-    - `keyspace` (String): Keyspace name
-  - `ormOptions` (Object): ORM-specific options
-    - `createKeyspace` (Boolean): Auto-create keyspace if not exists
-    - `migration` (String): Migration strategy ('safe' | 'drop')
-    - `idGenerator` (String): Default ID generator ('uuid' | 'nanoid' | 'timeuuid')
-
-**Returns:** `CassandraORM` instance
-
-**Example:**
 ```typescript
+import { createClient } from 'simple-orm-js';
+
 const client = createClient({
   clientOptions: {
     contactPoints: ['127.0.0.1'],
     localDataCenter: 'datacenter1',
-    keyspace: 'myapp'
+    keyspace: 'myapp',
+    // ... other cassandra-driver options
   },
   ormOptions: {
-    createKeyspace: true
+    createKeyspace: true,        // Auto-create keyspace
+    migration: 'safe',           // Migration strategy
+    idGenerator: 'uuid'          // Default ID generator
   }
 });
 ```
 
-### `client.connect()`
+## 🔌 Connection Management
 
-Connects to the Cassandra cluster.
+### `client.connect(): Promise<void>`
 
-**Returns:** `Promise<void>`
+Establishes connection to Cassandra/ScyllaDB.
 
-### `client.loadSchema(tableName, schema)`
-
-Loads a schema and returns a model instance.
-
-**Parameters:**
-- `tableName` (String): Name of the table
-- `schema` (Object): Schema definition
-
-**Returns:** `Promise<Model>`
-
-### `client.disconnect()`
-
-Disconnects from the Cassandra cluster.
-
-**Returns:** `Promise<void>`
-
-## Model
-
-### `Model.create(data)`
-
-Creates a new record.
-
-**Parameters:**
-- `data` (Object): Data to insert
-
-**Returns:** `Promise<Object>` - Created record with generated fields
-
-**Example:**
 ```typescript
-const user = await User.create({
-  name: 'John Doe',
-  email: 'john@example.com'
+await client.connect();
+```
+
+### `client.disconnect(): Promise<void>`
+
+Closes the connection.
+
+```typescript
+await client.disconnect();
+```
+
+## 📋 Schema Loading
+
+### `client.loadSchema<T>(tableName: string, schema: ModelSchema): Promise<Model<T>>`
+
+Loads and creates a model from schema definition.
+
+```typescript
+const User = await client.loadSchema('users', {
+  fields: {
+    id: 'uuid',
+    email: {
+      type: 'text',
+      unique: true,
+      validate: { required: true, isEmail: true }
+    },
+    name: {
+      type: 'text',
+      validate: { required: true, minLength: 2 }
+    }
+  },
+  key: ['id'],
+  indexes: ['email']
 });
 ```
 
-### `Model.find(where?)`
+## 🎯 Model Operations
 
-Finds multiple records.
+### `Model.create(data: any): Promise<any>`
 
-**Parameters:**
-- `where` (Object, optional): Query conditions
+Creates a new record with validation and unique constraint checking.
 
-**Returns:** `Promise<Array>` - Array of matching records
-
-**Example:**
 ```typescript
-const users = await User.find();
+const user = await User.create({
+  email: 'john@example.com',
+  name: 'John Doe'
+});
+```
+
+**Throws:**
+- `ValidationError` - When validation fails
+- `UniqueConstraintError` - When unique constraint is violated
+
+### `Model.find(where?: any): Promise<any[]>`
+
+Finds records matching the criteria.
+
+```typescript
+// Find all users
+const allUsers = await User.find();
+
+// Find with conditions
 const activeUsers = await User.find({ active: true });
+
+// Find by multiple conditions
+const users = await User.find({ 
+  active: true, 
+  role: 'admin' 
+});
 ```
 
-### `Model.findOne(where)`
+### `Model.findOne(where: any): Promise<any | null>`
 
-Finds a single record.
+Finds a single record matching the criteria.
 
-**Parameters:**
-- `where` (Object): Query conditions
-
-**Returns:** `Promise<Object|null>` - Matching record or null
-
-**Example:**
 ```typescript
-const user = await User.findOne({ id: userId });
+const user = await User.findOne({ email: 'john@example.com' });
+if (user) {
+  console.log('User found:', user.name);
+} else {
+  console.log('User not found');
+}
 ```
 
-### `Model.update(data, where)`
+### `Model.update(data: any, where: any): Promise<void>`
 
-Updates records.
+Updates records matching the criteria.
 
-**Parameters:**
-- `data` (Object): Data to update
-- `where` (Object): Query conditions
-
-**Returns:** `Promise<void>`
-
-**Example:**
 ```typescript
-await User.update({ name: 'Jane Doe' }, { id: userId });
+await User.update(
+  { name: 'John Smith', active: false },
+  { id: userId }
+);
 ```
 
-### `Model.delete(where)`
+**Throws:**
+- `ValidationError` - When validation fails
+- `UniqueConstraintError` - When unique constraint is violated
 
-Deletes records.
+### `Model.delete(where: any): Promise<void>`
 
-**Parameters:**
-- `where` (Object): Query conditions
+Deletes records matching the criteria.
 
-**Returns:** `Promise<void>`
-
-**Example:**
 ```typescript
 await User.delete({ id: userId });
 ```
 
-### `Model.count(where?)`
+### `Model.count(where?: any): Promise<number>`
 
-Counts records.
+Counts records matching the criteria.
 
-**Parameters:**
-- `where` (Object, optional): Query conditions
-
-**Returns:** `Promise<number>` - Count of matching records
-
-**Example:**
 ```typescript
 const totalUsers = await User.count();
 const activeUsers = await User.count({ active: true });
 ```
 
-### `Model.validate(data, isUpdate?)`
+### `Model.validate(data: any, isUpdate?: boolean): ValidationError[]`
 
-Validates data against schema.
+Validates data without persisting.
 
-**Parameters:**
-- `data` (Object): Data to validate
-- `isUpdate` (Boolean, optional): Whether this is an update operation
-
-**Returns:** `Array<ValidationError>` - Array of validation errors
-
-**Example:**
 ```typescript
 const errors = User.validate({
-  name: 'J', // Too short
-  email: 'invalid' // Invalid email
+  email: 'invalid-email',
+  name: 'J'
 });
 
 if (errors.length > 0) {
-  console.log('Validation errors:', errors);
+  console.log('Validation errors:', errors.map(e => e.message));
 }
 ```
 
-## Schema Definition
+## 🏗️ Schema Definition
 
 ### Field Types
 
-#### Simple Types
+#### Basic Types
 ```typescript
 {
-  field_name: 'type'
+  text_field: 'text',        // Variable length text
+  ascii_field: 'ascii',      // ASCII only text
+  varchar_field: 'varchar',  // Alias for text
+  int_field: 'int',          // 32-bit signed integer
+  bigint_field: 'bigint',    // 64-bit signed integer
+  float_field: 'float',      // 32-bit floating point
+  double_field: 'double',    // 64-bit floating point
+  boolean_field: 'boolean',  // True/false
+  timestamp_field: 'timestamp', // Date and time
+  uuid_field: 'uuid',        // UUID (auto-generated)
+  blob_field: 'blob'         // Binary data
 }
 ```
-
-#### Complex Types
-```typescript
-{
-  field_name: {
-    type: 'text',
-    unique: true,
-    validate: {
-      required: true,
-      minLength: 2
-    },
-    default: 'default_value'
-  }
-}
-```
-
-### Supported Types
-
-#### String Types
-- `text` - Variable length text
-- `ascii` - ASCII only text
-- `varchar` - Alias for text
-
-#### Numeric Types
-- `int` - 32-bit signed integer
-- `bigint` - 64-bit signed integer
-- `smallint` - 16-bit signed integer
-- `tinyint` - 8-bit signed integer
-- `varint` - Variable precision integer
-- `float` - 32-bit floating point
-- `double` - 64-bit floating point
-- `decimal` - Variable precision decimal
-- `counter` - Counter column
-
-#### ID Types
-- `uuid` - Standard UUID (auto-generated)
-- `timeuuid` - Time-based UUID (auto-generated)
-- `nanoid` - NanoID (auto-generated, URL-safe)
-
-#### Date/Time Types
-- `timestamp` - Date and time
-- `date` - Date only
-- `time` - Time only
-- `duration` - Duration/interval
 
 #### Collection Types
-- `set<type>` - Set of values
-- `list<type>` - List of values
-- `map<keyType,valueType>` - Map of key-value pairs
-- `tuple<type1,type2,...>` - Tuple with fixed structure
+```typescript
+{
+  text_set: 'set<text>',           // Unique text values
+  int_list: 'list<int>',           // Ordered integers
+  text_map: 'map<text,text>',      // Key-value pairs
+  coordinates: 'tuple<text,int>'   // Fixed structure
+}
+```
 
-#### Other Types
-- `boolean` - True/false
-- `blob` - Binary data
-- `inet` - IP address
-- `json` - JSON data (stored as text)
+#### Custom Types
+```typescript
+{
+  nanoid_field: 'nanoid',    // NanoID (auto-generated)
+  json_field: 'json'         // JSON data with validation
+}
+```
+
+### Field Definition Options
+
+```typescript
+interface FieldDefinition {
+  type: CassandraType;       // Field type
+  validate?: ValidationRule; // Validation rules
+  default?: any;             // Default value or function
+  unique?: boolean;          // Unique constraint
+  frozen?: boolean;          // For collections
+}
+```
 
 ### Validation Rules
 
-#### String Validation
 ```typescript
-{
-  required: true,
-  minLength: 2,
-  maxLength: 50,
-  pattern: /^[a-zA-Z]+$/,
-  isEmail: true,
-  isUrl: true
+interface ValidationRule {
+  required?: boolean;                    // Field is required
+  minLength?: number;                    // Minimum string length
+  maxLength?: number;                    // Maximum string length
+  min?: number;                          // Minimum numeric value
+  max?: number;                          // Maximum numeric value
+  pattern?: RegExp;                      // Regex pattern
+  isEmail?: boolean;                     // Email validation
+  isUrl?: boolean;                       // URL validation
+  isJson?: boolean;                      // JSON validation
+  custom?: (value: any) => boolean | string; // Custom validation
 }
 ```
 
-#### Number Validation
+### Schema Options
+
 ```typescript
-{
-  required: true,
-  min: 0,
-  max: 100
+interface ModelSchema {
+  fields: {
+    [key: string]: CassandraType | FieldDefinition;
+  };
+  key: string[];              // Primary key columns
+  clustering?: string[];      // Clustering columns
+  indexes?: string[];         // Secondary indexes
+  unique?: string[];          // Schema-level unique constraints
 }
 ```
 
-#### JSON Validation
-```typescript
-{
-  isJson: true
-}
-```
+## 🛡️ Error Handling
 
-#### Custom Validation
-```typescript
-{
-  custom: (value) => {
-    return value.length >= 8 || 'Must be at least 8 characters';
-  }
-}
-```
-
-### Unique Constraints
-
-#### Field-Level
-```typescript
-{
-  email: {
-    type: 'text',
-    unique: true
-  }
-}
-```
-
-#### Schema-Level
-```typescript
-{
-  fields: { /* ... */ },
-  key: ['id'],
-  unique: ['field1', 'field2']
-}
-```
-
-### Default Values
-
-#### Static Default
-```typescript
-{
-  active: {
-    type: 'boolean',
-    default: true
-  }
-}
-```
-
-#### Function Default
-```typescript
-{
-  created_at: {
-    type: 'timestamp',
-    default: () => new Date()
-  }
-}
-```
-
-## Utilities
-
-### ID Generation
+### Error Types
 
 ```typescript
-import { uuid, nanoid } from 'simple-orm-js';
+import { 
+  ValidationError, 
+  UniqueConstraintError, 
+  ConnectionError, 
+  SchemaError 
+} from 'simple-orm-js';
 
-const uuidId = uuid();        // Standard UUID
-const nanoId = nanoid();      // NanoID (21 chars)
-const customNano = nanoid(10); // Custom length NanoID
-```
-
-### Type Conversion
-
-```typescript
-import { CassandraTypes } from 'simple-orm-js';
-
-const longValue = CassandraTypes.Long.fromString('123456789');
-const inetAddr = CassandraTypes.InetAddress.fromString('192.168.1.1');
-```
-
-## Error Handling
-
-### Validation Errors
-```typescript
 try {
   await User.create(invalidData);
 } catch (error) {
-  if (error.message.includes('Validation failed')) {
-    // Handle validation error
+  if (error instanceof ValidationError) {
+    console.log('Validation failed:', error.message);
+  } else if (error instanceof UniqueConstraintError) {
+    console.log('Unique constraint violated:', error.message);
+  } else if (error instanceof ConnectionError) {
+    console.log('Connection failed:', error.message);
+  } else if (error instanceof SchemaError) {
+    console.log('Schema error:', error.message);
   }
 }
 ```
 
-### Unique Constraint Errors
+## 🆔 ID Utilities
+
+### UUID Generation
+
 ```typescript
-try {
-  await User.create({ email: 'existing@example.com' });
-} catch (error) {
-  if (error.message.includes('already exists')) {
-    // Handle unique constraint violation
+import { uuid, nanoid, CassandraTypes } from 'simple-orm-js';
+
+// Generate UUIDs
+const standardUuid = uuid();
+const timeUuid = CassandraTypes.TimeUuid.now();
+const nanoId = nanoid();
+const customNanoId = nanoid(10); // Custom length
+```
+
+## ⚡ Performance Features
+
+### Prepared Statements
+
+All queries automatically use prepared statements for optimal performance.
+
+### Connection Pooling
+
+Automatic connection management and pooling through cassandra-driver.
+
+### Type Conversion Optimization
+
+Efficient type conversion using Map-based lookups for O(1) performance.
+
+### Index Management
+
+Automatic index creation for unique constraints and specified indexes.
+
+## 🔧 Advanced Configuration
+
+### Client Options
+
+All cassandra-driver options are supported:
+
+```typescript
+const client = createClient({
+  clientOptions: {
+    contactPoints: ['127.0.0.1', '127.0.0.2'],
+    localDataCenter: 'datacenter1',
+    keyspace: 'myapp',
+    credentials: {
+      username: 'cassandra',
+      password: 'cassandra'
+    },
+    pooling: {
+      maxRequestsPerConnection: 32768
+    },
+    socketOptions: {
+      connectTimeout: 30000,
+      readTimeout: 30000
+    }
   }
+});
+```
+
+### ORM Options
+
+```typescript
+interface ORMOptions {
+  createKeyspace?: boolean;   // Auto-create keyspace
+  migration?: 'safe' | 'force'; // Migration strategy
+  idGenerator?: 'uuid' | 'nanoid'; // Default ID type
 }
 ```
 
-### Connection Errors
+## 📊 Type Conversion
+
+### Automatic Conversion
+
+The ORM automatically converts between JavaScript and Cassandra types:
+
 ```typescript
-try {
-  await client.connect();
-} catch (error) {
-  // Handle connection error
+// JavaScript -> Cassandra
+const data = {
+  id: uuid(),                    // UUID
+  name: 'John',                  // text
+  age: 30,                       // int
+  active: true,                  // boolean
+  created_at: new Date(),        // timestamp
+  tags: ['tag1', 'tag2'],        // set<text>
+  scores: [85, 92, 78],          // list<int>
+  metadata: { key: 'value' },    // map<text,text>
+  location: ['NYC', 10001]       // tuple<text,int>
+};
+
+await Model.create(data);
+```
+
+### Custom JSON Handling
+
+```typescript
+const schema = {
+  fields: {
+    config: {
+      type: 'json',
+      validate: {
+        isJson: true,
+        custom: (value) => {
+          const parsed = JSON.parse(value);
+          return parsed.version ? true : 'Config must have version';
+        }
+      }
+    }
+  }
+};
+```
+
+## 🎯 Best Practices
+
+### Schema Design
+
+1. **Use appropriate types** for your data
+2. **Add validation rules** to ensure data integrity
+3. **Create indexes** for frequently queried fields
+4. **Use unique constraints** where needed
+
+### Performance
+
+1. **Use prepared statements** (automatic)
+2. **Batch operations** when possible
+3. **Limit result sets** with appropriate WHERE clauses
+4. **Use clustering columns** for time-series data
+
+### Error Handling
+
+1. **Catch specific error types**
+2. **Validate data** before operations
+3. **Handle unique constraint violations**
+4. **Implement retry logic** for transient errors
+
+## 📈 Monitoring
+
+### Performance Metrics
+
+```typescript
+// Monitor query performance
+const startTime = Date.now();
+const results = await Model.find(criteria);
+const queryTime = Date.now() - startTime;
+console.log(`Query took ${queryTime}ms`);
+
+// Monitor memory usage
+const memUsage = process.memoryUsage();
+console.log(`Heap used: ${memUsage.heapUsed / 1024 / 1024}MB`);
+```
+
+### Connection Health
+
+```typescript
+// Check connection status
+if (client.connected) {
+  console.log('Connected to Cassandra');
+} else {
+  console.log('Not connected');
 }
 ```
+
+---
+
+This API reference covers all features of Simple ORM JS. For more examples and guides, see the main [README](../README.md).

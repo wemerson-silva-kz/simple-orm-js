@@ -23,12 +23,11 @@ Object.defineProperty(exports, "TypeConverter", { enumerable: true, get: functio
 var validator_1 = require("./validator");
 Object.defineProperty(exports, "Validator", { enumerable: true, get: function () { return validator_1.Validator; } });
 __exportStar(require("./types"), exports);
-// Convenience function
+__exportStar(require("./errors"), exports);
 const client_2 = require("./client");
 function createClient(config) {
     return new client_2.CassandraORM(config);
 }
-// ID utilities
 var cassandra_driver_1 = require("cassandra-driver");
 Object.defineProperty(exports, "CassandraTypes", { enumerable: true, get: function () { return cassandra_driver_1.types; } });
 var nanoid_1 = require("nanoid");

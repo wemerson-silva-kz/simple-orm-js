@@ -1,8 +1,8 @@
-import { ValidationError, FieldDefinition, CassandraType } from './types';
+import { FieldDefinition, CassandraType } from './types';
 export declare class Validator {
     static validate(data: any, fields: {
         [key: string]: CassandraType | FieldDefinition;
-    }, isUpdate?: boolean): ValidationError[];
+    }, isUpdate?: boolean): string[];
     private static getValidationRule;
     private static validateField;
     private static isValidEmail;

@@ -7,10 +7,10 @@ export declare class CassandraORM {
     private models;
     constructor(config: Config);
     connect(): Promise<void>;
+    executeWithPrepared(query: string, values?: any[]): Promise<any>;
     loadSchema<T extends ModelSchema>(tableName: string, schema: T): Promise<Model<any>>;
     disconnect(): Promise<void>;
     private createKeyspaceWithClient;
-    private createKeyspace;
     private createTable;
     private getUniqueFieldsFromSchema;
     private getFieldType;
