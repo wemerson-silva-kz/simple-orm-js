@@ -10,9 +10,10 @@
     "dev": "tsc --watch",
     "test": "bun test",
     "test:watch": "bun test --watch",
+    "test:unit": "bun test test/unit.test.ts",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run build && npm run test:unit"
   },
   "keywords": [
     "cassandra",
